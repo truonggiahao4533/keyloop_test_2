@@ -31,6 +31,8 @@ func NewRouter(d Deps) *gin.Engine {
 	r, v1 := newEngine(d)
 	h := &handlers{app: d.App}
 	v1.GET("/vehicles", require(platform.PermRead), h.listVehicles)
+	v1.GET("/vehicles/aging", require(platform.PermRead), h.listAging)
+	v1.GET("/dashboard/summary", require(platform.PermRead), h.summary)
 	return r
 }
 

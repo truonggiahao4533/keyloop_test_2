@@ -109,3 +109,45 @@ func formatCents(c *int64) *json.Number {
 	n := json.Number(fmt.Sprintf("%d.%02d", *c/100, *c%100))
 	return &n
 }
+
+type makeCountDTO struct {
+	Make  string `json:"make"`
+	Count int    `json:"count"`
+}
+
+type actionCountDTO struct {
+	Action *string `json:"action"`
+	Count  int     `json:"count"`
+}
+
+type summaryDTO struct {
+	TotalInStock  int              `json:"total_in_stock"`
+	AgingCount    int              `json:"aging_count"`
+	AgingPct      float64          `json:"aging_pct"`
+	ThresholdDays int              `json:"threshold_days"`
+	AgingByMake   []makeCountDTO   `json:"aging_by_make"`
+	AgingByAction []actionCountDTO `json:"aging_by_action"`
+}
+
+func toSummary(s app.DashboardSummary) summaryDTO {
+	out := summaryDTO{
+		TotalInStock:  s.TotalInStock,
+		AgingCount:    s.AgingCount,
+		AgingPct:      s.AgingPct,
+		ThresholdDays: s.ThresholdDays,
+		AgingByMake:   make([]makeCountDTO, len(s.AgingByMake)),
+		AgingByAction: make([]actionCountDTO, len(s.AgingByAction)),
+	}
+	for i, m := range s.AgingByMake {
+		out.AgingByMake[i] = makeCountDTO{Make: m.Make, Count: m.Count}
+	}
+	for i, a := range s.AgingByAction {
+		d := actionCountDTO{Count: a.Count}
+		if a.Action != nil {
+			v := string(*a.Action)
+			d.Action = &v
+		}
+		out.AgingByAction[i] = d
+	}
+	return out
+}

@@ -70,3 +70,18 @@ func queryInt(c *gin.Context, name string) (*int, error) {
 	}
 	return &n, nil
 }
+
+// GET /v1/vehicles/aging
+func (h *handlers) listAging(c *gin.Context) {
+	q, err := parseListQuery(c)
+	if err != nil {
+		writeAppError(c, err)
+		return
+	}
+	page, err := h.app.ListAging(c.Request.Context(), q)
+	if err != nil {
+		writeAppError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toVehicleList(page))
+}
