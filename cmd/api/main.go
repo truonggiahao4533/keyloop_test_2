@@ -4,11 +4,14 @@
 //
 //	api            serve HTTP
 //	api migrate    apply database migrations and exit
+//	api token -role manager [-sub alice] [-ttl 24h]
+//	               print a demo JWT signed with JWT_SECRET
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -23,6 +26,7 @@ import (
 )
 
 func main() {
+	slog.SetDefault(platform.NewLogger())
 	cmd := "serve"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
@@ -33,6 +37,8 @@ func main() {
 		err = serve()
 	case "migrate":
 		err = migrate()
+	case "token":
+		err = token(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", cmd)
 	}
@@ -60,6 +66,33 @@ func migrate() error {
 	return nil
 }
 
+func token(args []string) error {
+	fs := flag.NewFlagSet("token", flag.ContinueOnError)
+	role := fs.String("role", "manager", "viewer | manager | ingest")
+	sub := fs.String("sub", "", "subject (default demo-<role>)")
+	ttl := fs.Duration("ttl", 24*time.Hour, "token lifetime")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	r, err := platform.ParseRole(*role)
+	if err != nil {
+		return err
+	}
+	if *sub == "" {
+		*sub = "demo-" + *role
+	}
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return errors.New("JWT_SECRET is required")
+	}
+	tok, err := platform.NewAuthenticator(secret).Mint(*sub, r, *ttl)
+	if err != nil {
+		return err
+	}
+	fmt.Println(tok)
+	return nil
+}
+
 func serve() error {
 	cfg, err := platform.LoadConfig()
 	if err != nil {
@@ -75,8 +108,12 @@ func serve() error {
 	defer pool.Close()
 
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           httpadapter.NewRouter(httpadapter.Deps{DB: pool}),
+		Addr: ":" + cfg.Port,
+		Handler: httpadapter.NewRouter(httpadapter.Deps{
+			DB:     pool,
+			Auth:   platform.NewAuthenticator(cfg.JWTSecret),
+			Logger: slog.Default(),
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errc := make(chan error, 1)

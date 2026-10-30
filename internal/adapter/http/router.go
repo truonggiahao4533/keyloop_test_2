@@ -3,10 +3,13 @@ package http
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/haotruong/inventory-dashboard/internal/platform"
 )
 
 // Pinger reports whether a dependency is reachable.
@@ -16,13 +19,35 @@ type Pinger interface {
 
 // Deps are the router dependencies.
 type Deps struct {
-	DB Pinger
+	DB     Pinger
+	Auth   *platform.Authenticator
+	Logger *slog.Logger
 }
 
 // NewRouter builds the Gin engine with all routes and middleware.
 func NewRouter(d Deps) *gin.Engine {
+	r, _ := newEngine(d)
+	return r
+}
+
+// newEngine wires the middleware chain and the unauthenticated routes, and
+// returns the authenticated /v1 group.
+func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
+	if d.Logger == nil {
+		d.Logger = slog.Default()
+	}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
+	r.HandleMethodNotAllowed = true
+	r.Use(
+		requestIDMiddleware(),
+		recoverMiddleware(d.Logger),
+		loggerMiddleware(d.Logger),
+	)
+	r.NoRoute(func(c *gin.Context) { writeError(c, http.StatusNotFound, "NOT_FOUND", "route not found") })
+	r.NoMethod(func(c *gin.Context) {
+		writeError(c, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+	})
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -31,10 +56,12 @@ func NewRouter(d Deps) *gin.Engine {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		if err := d.DB.Ping(ctx); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+			writeError(c, http.StatusServiceUnavailable, "UNAVAILABLE", "database unavailable")
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-	return r
+
+	v1 := r.Group("/v1", authMiddleware(d.Auth))
+	return r, v1
 }
