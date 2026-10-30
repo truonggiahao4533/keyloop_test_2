@@ -96,10 +96,10 @@ func (e *testEnv) seed(vs ...domain.Vehicle) {
 	}
 }
 
-func veh(i int, make_, model string, age int) domain.Vehicle {
+func veh(i int, mk, model string, age int) domain.Vehicle {
 	price := int64(2000000 + i*100 + 99)
 	return domain.Vehicle{
-		VIN: fmt.Sprintf("HTTPVIN%010d", i), Make: make_, Model: model, Year: 2024,
+		VIN: fmt.Sprintf("HTTPVIN%010d", i), Make: mk, Model: model, Year: 2024,
 		PriceCents: &price, ReceivedAt: today.AddDate(0, 0, -age), Status: domain.StatusInStock,
 	}
 }

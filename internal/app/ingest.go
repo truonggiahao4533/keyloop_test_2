@@ -102,7 +102,8 @@ func validVIN(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= '0' && r <= '9' || r >= 'A' && r <= 'Z') || r == 'I' || r == 'O' || r == 'Q' {
+		alnum := r >= '0' && r <= '9' || r >= 'A' && r <= 'Z'
+		if !alnum || r == 'I' || r == 'O' || r == 'Q' {
 			return false
 		}
 	}

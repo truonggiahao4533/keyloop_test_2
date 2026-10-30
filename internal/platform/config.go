@@ -18,6 +18,9 @@ type Config struct {
 
 	DBMaxConns int32
 	DBTimeout  time.Duration
+
+	RateLimitRPS   float64 // per client IP; 0 disables
+	RateLimitBurst int
 }
 
 // LoadConfig reads the configuration from environment variables.
@@ -29,6 +32,9 @@ func LoadConfig() (Config, error) {
 		OTLPEndpoint: os.Getenv("OTLP_ENDPOINT"),
 		DBMaxConns:   20,
 		DBTimeout:    3 * time.Second,
+
+		RateLimitRPS:   50,
+		RateLimitBurst: 100,
 	}
 	if c.DatabaseURL == "" {
 		return c, fmt.Errorf("DATABASE_URL is required")
@@ -37,11 +43,25 @@ func LoadConfig() (Config, error) {
 		return c, fmt.Errorf("JWT_SECRET is required (min 16 chars)")
 	}
 	if v := os.Getenv("DB_MAX_CONNS"); v != "" {
-		n, err := strconv.Atoi(v)
+		n, err := strconv.ParseInt(v, 10, 32)
 		if err != nil || n < 1 {
 			return c, fmt.Errorf("DB_MAX_CONNS must be a positive integer")
 		}
 		c.DBMaxConns = int32(n)
+	}
+	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || f < 0 {
+			return c, fmt.Errorf("RATE_LIMIT_RPS must be a non-negative number")
+		}
+		c.RateLimitRPS = f
+	}
+	if v := os.Getenv("RATE_LIMIT_BURST"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return c, fmt.Errorf("RATE_LIMIT_BURST must be a positive integer")
+		}
+		c.RateLimitBurst = n
 	}
 	return c, nil
 }

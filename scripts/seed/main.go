@@ -116,7 +116,8 @@ func main() {
 	}
 
 	start := time.Now()
-	vs, as := generate(*n, rand.New(rand.NewPCG(*seed, *seed)), time.Now().UTC())
+	rng := rand.New(rand.NewPCG(*seed, *seed)) //nolint:gosec // reproducible demo data, not security-sensitive
+	vs, as := generate(*n, rng, time.Now().UTC())
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {

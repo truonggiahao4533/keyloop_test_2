@@ -139,8 +139,17 @@ func serve() error {
 			Auth:    platform.NewAuthenticator(cfg.JWTSecret),
 			Logger:  slog.Default(),
 			Metrics: metrics,
+			Limits: httpadapter.Limits{
+				MaxBodyBytes:   1 << 20,
+				RequestTimeout: 5 * time.Second,
+				RatePerSecond:  cfg.RateLimitRPS,
+				RateBurst:      cfg.RateLimitBurst,
+			},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

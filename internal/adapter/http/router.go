@@ -26,6 +26,7 @@ type Deps struct {
 	Auth    *platform.Authenticator
 	Logger  *slog.Logger
 	Metrics *platform.Metrics // nil creates a private registry
+	Limits  Limits
 }
 
 // NewRouter builds the Gin engine with all routes and middleware.
@@ -58,6 +59,9 @@ func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
+	// Rate limiting keys on the client IP: use the socket address and ignore
+	// X-Forwarded-For unless a trusted proxy is configured in front.
+	_ = r.SetTrustedProxies(nil)
 	r.Use(
 		requestIDMiddleware(),
 		recoverMiddleware(d.Logger),
@@ -87,6 +91,15 @@ func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
 
 	r.GET("/metrics", gin.WrapH(d.Metrics.Handler()))
 
-	v1 := r.Group("/v1", authMiddleware(d.Auth))
+	lim := d.Limits.withDefaults()
+	v1 := r.Group("/v1")
+	if lim.RatePerSecond > 0 {
+		v1.Use(rateLimitMiddleware(lim.RatePerSecond, lim.RateBurst))
+	}
+	v1.Use(
+		bodyLimitMiddleware(lim.MaxBodyBytes),
+		timeoutMiddleware(lim.RequestTimeout),
+		authMiddleware(d.Auth),
+	)
 	return r, v1
 }

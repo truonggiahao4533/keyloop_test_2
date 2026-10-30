@@ -25,9 +25,9 @@ func ptr[T any](v T) *T { return &v }
 
 func vin(i int) string { return fmt.Sprintf("TESTVIN%010d", i) }
 
-func vehicle(i int, make_, model string, ageDays int) domain.Vehicle {
+func vehicle(i int, mk, model string, ageDays int) domain.Vehicle {
 	return domain.Vehicle{
-		VIN: vin(i), Make: make_, Model: model, Year: 2024,
+		VIN: vin(i), Make: mk, Model: model, Year: 2024,
 		PriceCents: ptr(int64(2500000 + i)),
 		ReceivedAt: today.AddDate(0, 0, -ageDays),
 		Status:     domain.StatusInStock,

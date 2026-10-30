@@ -42,6 +42,9 @@ services:
       DATABASE_URL: postgres://inventory:inventory@db:5432/inventory?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-please}
       OTLP_ENDPOINT: ${OTLP_ENDPOINT:-}
+      # Per client IP; set RATE_LIMIT_RPS=0 for load tests from one host.
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-50}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-100}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
