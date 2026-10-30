@@ -1,9 +1,15 @@
 // Command api runs the Intelligent Inventory Dashboard HTTP service.
+//
+// Usage:
+//
+//	api            serve HTTP
+//	api migrate    apply database migrations and exit
 package main
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,13 +23,44 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	cmd := "serve"
+	if len(os.Args) > 1 {
+		cmd = os.Args[1]
+	}
+	var err error
+	switch cmd {
+	case "serve":
+		err = serve()
+	case "migrate":
+		err = migrate()
+	default:
+		err = fmt.Errorf("unknown command %q", cmd)
+	}
+	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func migrate() error {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		return errors.New("DATABASE_URL is required")
+	}
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, postgres.PoolConfig{URL: url, MaxConns: 2})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	if err := postgres.Migrate(ctx, pool); err != nil {
+		return err
+	}
+	slog.Info("migrations applied")
+	return nil
+}
+
+func serve() error {
 	cfg, err := platform.LoadConfig()
 	if err != nil {
 		return err
