@@ -22,6 +22,8 @@ import (
 
 	httpadapter "github.com/haotruong/inventory-dashboard/internal/adapter/http"
 	"github.com/haotruong/inventory-dashboard/internal/adapter/postgres"
+	"github.com/haotruong/inventory-dashboard/internal/app"
+	"github.com/haotruong/inventory-dashboard/internal/domain"
 	"github.com/haotruong/inventory-dashboard/internal/platform"
 )
 
@@ -106,11 +108,14 @@ func serve() error {
 		return err
 	}
 	defer pool.Close()
+	repos := postgres.NewRepos(pool, cfg.DBTimeout)
+	svc := app.New(repos.Vehicles, repos.Actions, repos.Settings, domain.SystemClock{})
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: httpadapter.NewRouter(httpadapter.Deps{
 			DB:     pool,
+			App:    svc,
 			Auth:   platform.NewAuthenticator(cfg.JWTSecret),
 			Logger: slog.Default(),
 		}),

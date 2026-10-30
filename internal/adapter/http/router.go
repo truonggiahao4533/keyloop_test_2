@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/haotruong/inventory-dashboard/internal/app"
 	"github.com/haotruong/inventory-dashboard/internal/platform"
 )
 
@@ -20,13 +21,16 @@ type Pinger interface {
 // Deps are the router dependencies.
 type Deps struct {
 	DB     Pinger
+	App    *app.Service
 	Auth   *platform.Authenticator
 	Logger *slog.Logger
 }
 
 // NewRouter builds the Gin engine with all routes and middleware.
 func NewRouter(d Deps) *gin.Engine {
-	r, _ := newEngine(d)
+	r, v1 := newEngine(d)
+	h := &handlers{app: d.App}
+	v1.GET("/vehicles", require(platform.PermRead), h.listVehicles)
 	return r
 }
 
