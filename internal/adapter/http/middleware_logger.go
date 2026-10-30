@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/haotruong/inventory-dashboard/internal/platform"
 )
 
 // loggerMiddleware writes one structured line per request. It never logs
@@ -20,17 +18,13 @@ func loggerMiddleware(log *slog.Logger) gin.HandlerFunc {
 		if status >= 500 {
 			level = slog.LevelError
 		}
-		var subject string
-		if p, ok := platform.PrincipalFrom(c.Request.Context()); ok {
-			subject = p.Subject
-		}
 		log.LogAttrs(c.Request.Context(), level, "request",
 			slog.String("request_id", requestID(c)),
 			slog.String("method", c.Request.Method),
 			slog.String("route", routeLabel(c)),
 			slog.Int("status", status),
 			slog.Float64("latency_ms", float64(time.Since(start).Microseconds())/1000),
-			slog.String("subject", subject),
+			slog.String("subject", principal(c).Subject),
 		)
 	}
 }

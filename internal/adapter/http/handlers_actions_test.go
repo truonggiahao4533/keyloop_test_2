@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/haotruong/inventory-dashboard/internal/domain"
 	"github.com/haotruong/inventory-dashboard/internal/platform"
@@ -174,7 +175,10 @@ func TestLogActionConcurrentAndHistory(t *testing.T) {
 		t.Fatalf("history has %d rows, want %d", len(h.Items), n+1)
 	}
 	for i := 1; i < len(h.Items); i++ {
-		if h.Items[i].CreatedAt > h.Items[i-1].CreatedAt {
+		// Parse: RFC 3339 strings with trimmed zeros do not sort lexically.
+		cur, _ := time.Parse(time.RFC3339Nano, h.Items[i].CreatedAt)
+		prev, _ := time.Parse(time.RFC3339Nano, h.Items[i-1].CreatedAt)
+		if cur.After(prev) {
 			t.Fatalf("history not newest first at %d", i)
 		}
 	}

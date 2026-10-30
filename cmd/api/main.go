@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/exaring/otelpgx"
+
 	httpadapter "github.com/haotruong/inventory-dashboard/internal/adapter/http"
 	"github.com/haotruong/inventory-dashboard/internal/adapter/postgres"
 	"github.com/haotruong/inventory-dashboard/internal/app"
@@ -103,21 +105,40 @@ func serve() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := postgres.NewPool(ctx, postgres.PoolConfig{URL: cfg.DatabaseURL, MaxConns: cfg.DBMaxConns})
+	shutdownTracing, err := platform.SetupTracing(ctx, cfg.OTLPEndpoint)
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(ctx); err != nil {
+			slog.Warn("tracing shutdown", "err", err)
+		}
+	}()
+
+	pool, err := postgres.NewPool(ctx, postgres.PoolConfig{
+		URL:      cfg.DatabaseURL,
+		MaxConns: cfg.DBMaxConns,
+		Tracer:   otelpgx.NewTracer(), // query parameters are not recorded
+	})
+	if err != nil {
+		return err
+	}
+	defer pool.Close() // runs after the server has drained
+	metrics := platform.NewMetrics()
+	metrics.RegisterPool(pool)
 	repos := postgres.NewRepos(pool, cfg.DBTimeout)
 	svc := app.New(repos.Vehicles, repos.Actions, repos.Settings, domain.SystemClock{})
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,
 		Handler: httpadapter.NewRouter(httpadapter.Deps{
-			DB:     pool,
-			App:    svc,
-			Auth:   platform.NewAuthenticator(cfg.JWTSecret),
-			Logger: slog.Default(),
+			DB:      pool,
+			App:     svc,
+			Auth:    platform.NewAuthenticator(cfg.JWTSecret),
+			Logger:  slog.Default(),
+			Metrics: metrics,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -130,6 +151,7 @@ func serve() error {
 		return err
 	case <-ctx.Done():
 	}
+	slog.Info("shutting down: draining in-flight requests")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -50,5 +50,14 @@ services:
       seed:
         condition: service_completed_successfully
 
+  # Optional tracing UI:
+  #   OTLP_ENDPOINT=jaeger:4317 docker compose --profile observability up -d
+  # then open http://localhost:16686
+  jaeger:
+    image: jaegertracing/jaeger:2.11.0
+    profiles: ["observability"]
+    ports:
+      - "16686:16686"
+
 volumes:
   pgdata:

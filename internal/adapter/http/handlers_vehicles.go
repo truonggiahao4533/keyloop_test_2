@@ -8,10 +8,12 @@ import (
 
 	"github.com/haotruong/inventory-dashboard/internal/app"
 	"github.com/haotruong/inventory-dashboard/internal/domain"
+	"github.com/haotruong/inventory-dashboard/internal/platform"
 )
 
 type handlers struct {
-	app *app.Service
+	app     *app.Service
+	metrics *platform.Metrics
 }
 
 // GET /v1/vehicles

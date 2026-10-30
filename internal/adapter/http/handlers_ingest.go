@@ -51,5 +51,8 @@ func (h *handlers) ingest(c *gin.Context) {
 		writeAppError(c, err)
 		return
 	}
+	h.metrics.IngestRows.WithLabelValues("inserted").Add(float64(res.Inserted))
+	h.metrics.IngestRows.WithLabelValues("updated").Add(float64(res.Updated))
+	h.metrics.IngestRows.WithLabelValues("unchanged").Add(float64(res.Unchanged))
 	c.JSON(http.StatusOK, ingestResponse{Inserted: res.Inserted, Updated: res.Updated})
 }

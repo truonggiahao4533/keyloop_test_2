@@ -27,6 +27,9 @@ func authMiddleware(a *platform.Authenticator) gin.HandlerFunc {
 			return
 		}
 		c.Request = c.Request.WithContext(platform.WithPrincipal(c.Request.Context(), p))
+		// Also keep it on the gin context: outer middleware (otelgin) restores
+		// c.Request on the way out, so the logger cannot rely on the request.
+		c.Set(ctxPrincipal, p)
 		c.Next()
 	}
 }
@@ -43,7 +46,10 @@ func require(perm platform.Permission) gin.HandlerFunc {
 	}
 }
 
+const ctxPrincipal = "principal"
+
 func principal(c *gin.Context) platform.Principal {
-	p, _ := platform.PrincipalFrom(c.Request.Context())
-	return p
+	p, _ := c.Get(ctxPrincipal)
+	pr, _ := p.(platform.Principal)
+	return pr
 }

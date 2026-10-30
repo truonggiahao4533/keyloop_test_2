@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/haotruong/inventory-dashboard/internal/app"
 	"github.com/haotruong/inventory-dashboard/internal/platform"
@@ -20,16 +21,20 @@ type Pinger interface {
 
 // Deps are the router dependencies.
 type Deps struct {
-	DB     Pinger
-	App    *app.Service
-	Auth   *platform.Authenticator
-	Logger *slog.Logger
+	DB      Pinger
+	App     *app.Service
+	Auth    *platform.Authenticator
+	Logger  *slog.Logger
+	Metrics *platform.Metrics // nil creates a private registry
 }
 
 // NewRouter builds the Gin engine with all routes and middleware.
 func NewRouter(d Deps) *gin.Engine {
+	if d.Metrics == nil {
+		d.Metrics = platform.NewMetrics()
+	}
 	r, v1 := newEngine(d)
-	h := &handlers{app: d.App}
+	h := &handlers{app: d.App, metrics: d.Metrics}
 	v1.GET("/vehicles", require(platform.PermRead), h.listVehicles)
 	v1.GET("/vehicles/aging", require(platform.PermRead), h.listAging)
 	v1.GET("/dashboard/summary", require(platform.PermRead), h.summary)
@@ -47,6 +52,9 @@ func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
 	if d.Logger == nil {
 		d.Logger = slog.Default()
 	}
+	if d.Metrics == nil {
+		d.Metrics = platform.NewMetrics()
+	}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.HandleMethodNotAllowed = true
@@ -54,6 +62,10 @@ func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
 		requestIDMiddleware(),
 		recoverMiddleware(d.Logger),
 		loggerMiddleware(d.Logger),
+		metricsMiddleware(d.Metrics),
+		otelgin.Middleware(platform.ServiceName, otelgin.WithFilter(func(r *http.Request) bool {
+			return r.URL.Path != "/metrics" && r.URL.Path != "/healthz" && r.URL.Path != "/readyz"
+		})),
 	)
 	r.NoRoute(func(c *gin.Context) { writeError(c, http.StatusNotFound, "NOT_FOUND", "route not found") })
 	r.NoMethod(func(c *gin.Context) {
@@ -72,6 +84,8 @@ func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	r.GET("/metrics", gin.WrapH(d.Metrics.Handler()))
 
 	v1 := r.Group("/v1", authMiddleware(d.Auth))
 	return r, v1

@@ -48,6 +48,8 @@ func (h *handlers) logAction(c *gin.Context) {
 	}
 	if replay {
 		c.Header(headerReplayed, "true")
+	} else {
+		h.metrics.ActionsLogged.WithLabelValues(string(a.Type)).Inc()
 	}
 	c.JSON(http.StatusCreated, toActionDTO(a))
 }
