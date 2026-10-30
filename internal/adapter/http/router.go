@@ -35,6 +35,9 @@ func NewRouter(d Deps) *gin.Engine {
 	v1.GET("/dashboard/summary", require(platform.PermRead), h.summary)
 	v1.POST("/vehicles/:id/actions", require(platform.PermLogAction), h.logAction)
 	v1.GET("/vehicles/:id/actions", require(platform.PermRead), h.actionHistory)
+	v1.GET("/settings/aging-threshold", require(platform.PermRead), h.getThreshold)
+	v1.PUT("/settings/aging-threshold", require(platform.PermSetThreshold), h.putThreshold)
+	v1.POST("/ingest/vehicles", require(platform.PermIngest), h.ingest)
 	return r
 }
 
