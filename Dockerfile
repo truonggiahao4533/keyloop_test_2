@@ -5,7 +5,8 @@ ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+RUN go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api \
+ && go build -trimpath -ldflags="-s -w" -o /out/seed ./scripts/seed
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/ /
