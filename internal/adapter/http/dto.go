@@ -151,3 +151,55 @@ func toSummary(s app.DashboardSummary) summaryDTO {
 	}
 	return out
 }
+
+type actionDTO struct {
+	ID         string    `json:"id"`
+	VehicleID  string    `json:"vehicle_id"`
+	ActionType string    `json:"action_type"`
+	Note       *string   `json:"note"`
+	CreatedBy  string    `json:"created_by"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type actionListDTO struct {
+	Items []actionDTO `json:"items"`
+}
+
+func toActionDTO(a domain.Action) actionDTO {
+	return actionDTO{
+		ID:         a.ID.String(),
+		VehicleID:  a.VehicleID.String(),
+		ActionType: string(a.Type),
+		Note:       a.Note,
+		CreatedBy:  a.CreatedBy,
+		CreatedAt:  a.CreatedAt.UTC(),
+	}
+}
+
+// decodeJSON strictly decodes the request body into v.
+func decodeJSON(c *gin.Context, v any) error {
+	dec := json.NewDecoder(c.Request.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			return errBodyTooLarge
+		}
+		return domain.Validationf("invalid JSON body: %s", err.Error())
+	}
+	if dec.More() {
+		return domain.Validationf("invalid JSON body: trailing data")
+	}
+	return nil
+}
+
+var errBodyTooLarge = errors.New("request body too large")
+
+// writeBodyError handles decodeJSON errors.
+func writeBodyError(c *gin.Context, err error) {
+	if errors.Is(err, errBodyTooLarge) {
+		writeError(c, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body too large")
+		return
+	}
+	writeAppError(c, err)
+}

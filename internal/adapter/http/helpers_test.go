@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/haotruong/inventory-dashboard/internal/adapter/postgres"
 	"github.com/haotruong/inventory-dashboard/internal/adapter/postgres/pgtest"
 	"github.com/haotruong/inventory-dashboard/internal/app"
@@ -25,6 +27,7 @@ var today = time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
 
 type testEnv struct {
 	t       *testing.T
+	pool    *pgxpool.Pool
 	handler http.Handler
 	repos   postgres.Repos
 	tokens  map[platform.Role]string
@@ -36,7 +39,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	repos := postgres.NewRepos(pool, 0)
 	svc := app.New(repos.Vehicles, repos.Actions, repos.Settings, domain.FixedClock(today))
 	h := NewRouter(Deps{DB: pool, App: svc, Auth: platform.NewAuthenticator(testSecret)})
-	env := &testEnv{t: t, handler: h, repos: repos, tokens: map[platform.Role]string{}}
+	env := &testEnv{t: t, pool: pool, handler: h, repos: repos, tokens: map[platform.Role]string{}}
 	for _, r := range []platform.Role{platform.RoleViewer, platform.RoleManager, platform.RoleIngest} {
 		env.tokens[r] = mint(t, r)
 	}
@@ -150,3 +153,5 @@ func (e *testEnv) listAll(path string) []int {
 	e.t.Fatal("pagination did not terminate")
 	return nil
 }
+
+func pgPool(e *testEnv) *pgxpool.Pool { return e.pool }
