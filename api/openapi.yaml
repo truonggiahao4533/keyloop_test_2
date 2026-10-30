@@ -1,0 +1,486 @@
+openapi: 3.0.3
+info:
+  title: Intelligent Inventory Dashboard API
+  version: 1.0.0
+  description: |
+    Backend for one dealership's inventory dashboard. Vehicle age is derived
+    at query time from `received_at`; a vehicle is *aging* when its age in
+    days is strictly greater than the configured threshold (default 90, so
+    day 91 and later).
+
+    All `/v1` endpoints require an HS256 JWT bearer token with claims
+    `{sub, role}` where role is `viewer`, `manager` or `ingest`:
+
+    | Operation | viewer | manager | ingest |
+    |---|---|---|---|
+    | Read (vehicles, aging, history, summary, threshold) | yes | yes | no |
+    | Log action, change threshold | no | yes | no |
+    | Ingest vehicles | no | no | yes |
+
+    Every error uses the same body: `{"error":{"code","message","request_id"}}`.
+    Every response carries an `X-Request-Id` header (an inbound one is reused).
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe (always 200)
+      security: []
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+  /readyz:
+    get:
+      summary: Readiness probe (pings the database)
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      security: []
+      responses:
+        "200":
+          description: Prometheus text exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /v1/vehicles:
+    get:
+      summary: List in-stock vehicles (oldest first)
+      description: |
+        Filters combine with AND. Age filters are inclusive. `aging=true`
+        keeps only vehicles older than the configured threshold.
+      parameters:
+        - $ref: "#/components/parameters/Make"
+        - $ref: "#/components/parameters/Model"
+        - $ref: "#/components/parameters/MinAgeDays"
+        - $ref: "#/components/parameters/MaxAgeDays"
+        - name: aging
+          in: query
+          schema: { type: boolean }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: One page of vehicles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/vehicles/aging:
+    get:
+      summary: List aging stock (oldest first)
+      description: Same as `/v1/vehicles?aging=true`.
+      parameters:
+        - $ref: "#/components/parameters/Make"
+        - $ref: "#/components/parameters/Model"
+        - $ref: "#/components/parameters/MinAgeDays"
+        - $ref: "#/components/parameters/MaxAgeDays"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: One page of aging vehicles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/vehicles/{id}/actions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Action history for a vehicle (newest first)
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Actions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActionList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      summary: Log an action on an in-stock vehicle (manager)
+      description: |
+        Allowed on any in-stock vehicle, aging or not, so managers can act
+        early. The action becomes the vehicle's `current_action`.
+
+        Idempotency: repeating a request with the same `Idempotency-Key` and
+        the same body returns the stored response (status 201) with
+        `Idempotency-Replayed: true` and creates no new row. Reusing a key
+        with a different body or vehicle returns 409.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LogActionRequest" }
+      responses:
+        "201":
+          description: Action logged (or replayed)
+          headers:
+            Idempotency-Replayed:
+              description: Present with value `true` when this is a stored response.
+              schema: { type: string, enum: ["true"] }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Action" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/dashboard/summary:
+    get:
+      summary: Aging overview
+      description: |
+        `aging_by_action` counts aging vehicles by their current action;
+        `action: null` means no action has been logged yet.
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Summary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/settings/aging-threshold:
+    get:
+      summary: Current aging threshold
+      responses:
+        "200":
+          description: Threshold
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Threshold" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    put:
+      summary: Change the aging threshold (manager)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Threshold" }
+      responses:
+        "200":
+          description: Updated threshold
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Threshold" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/ingest/vehicles:
+    post:
+      summary: Upsert a batch of vehicles by VIN (ingest)
+      description: |
+        At most 1000 vehicles per batch, VINs unique within the batch.
+        Unchanged rows count as neither inserted nor updated, so re-sending
+        a batch returns `inserted: 0, updated: 0`. Ingest never changes a
+        vehicle's current action.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestRequest" }
+      responses:
+        "200":
+          description: Batch applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Make:
+      name: make
+      in: query
+      description: Exact make, e.g. Toyota
+      schema: { type: string }
+    Model:
+      name: model
+      in: query
+      description: Exact model, e.g. Corolla
+      schema: { type: string }
+    MinAgeDays:
+      name: min_age_days
+      in: query
+      description: Minimum age in days (inclusive)
+      schema: { type: integer, minimum: 0, maximum: 36500 }
+    MaxAgeDays:
+      name: max_age_days
+      in: query
+      description: Maximum age in days (inclusive)
+      schema: { type: integer, minimum: 0, maximum: 36500 }
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque `next_cursor` from the previous page
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+  responses:
+    BadRequest:
+      description: Invalid parameters or body (code VALIDATION_ERROR)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, invalid or expired token (code UNAUTHORIZED)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Role is not allowed (code FORBIDDEN)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Vehicle not found (code NOT_FOUND)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Idempotency key reused with a different request, or vehicle not in stock (code CONFLICT)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: Body larger than 1 MB (code PAYLOAD_TOO_LARGE)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many requests from this client IP (code RATE_LIMITED)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: Database unavailable (code UNAVAILABLE)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Status:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT,
+                     METHOD_NOT_ALLOWED, PAYLOAD_TOO_LARGE, RATE_LIMITED, TIMEOUT,
+                     UNAVAILABLE, INTERNAL]
+            message: { type: string }
+            request_id: { type: string }
+
+    ActionType:
+      type: string
+      enum: [PRICE_REDUCTION_PLANNED, PRICE_REDUCED, TRANSFER_PLANNED,
+             WHOLESALE_PLANNED, PROMOTION_PLANNED, NO_ACTION_NEEDED]
+
+    Vehicle:
+      type: object
+      additionalProperties: false
+      required: [id, vin, make, model, year, price, received_at, age_days, is_aging,
+                 current_action, current_action_at]
+      properties:
+        id: { type: string, format: uuid }
+        vin: { type: string, minLength: 17, maxLength: 17 }
+        make: { type: string }
+        model: { type: string }
+        year: { type: integer }
+        price: { type: number, nullable: true, minimum: 0, example: 24999.00 }
+        received_at: { type: string, format: date }
+        age_days: { type: integer, minimum: 0, description: "today - received_at, in days" }
+        is_aging: { type: boolean, description: "age_days > threshold" }
+        current_action:
+          allOf: [{ $ref: "#/components/schemas/ActionType" }]
+          nullable: true
+        current_action_at: { type: string, format: date-time, nullable: true }
+
+    VehicleList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Vehicle" }
+        next_cursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` to get the next page; null on the last page.
+
+    LogActionRequest:
+      type: object
+      additionalProperties: false
+      required: [action_type]
+      properties:
+        action_type: { $ref: "#/components/schemas/ActionType" }
+        note: { type: string, nullable: true, maxLength: 1000 }
+
+    Action:
+      type: object
+      additionalProperties: false
+      required: [id, vehicle_id, action_type, note, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        vehicle_id: { type: string, format: uuid }
+        action_type: { $ref: "#/components/schemas/ActionType" }
+        note: { type: string, nullable: true }
+        created_by: { type: string, description: JWT subject of the manager }
+        created_at: { type: string, format: date-time }
+
+    ActionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Action" }
+
+    Summary:
+      type: object
+      additionalProperties: false
+      required: [total_in_stock, aging_count, aging_pct, threshold_days, aging_by_make, aging_by_action]
+      properties:
+        total_in_stock: { type: integer, minimum: 0 }
+        aging_count: { type: integer, minimum: 0 }
+        aging_pct: { type: number, minimum: 0, maximum: 100, description: One decimal }
+        threshold_days: { type: integer }
+        aging_by_make:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [make, count]
+            properties:
+              make: { type: string }
+              count: { type: integer }
+        aging_by_action:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [action, count]
+            properties:
+              action:
+                allOf: [{ $ref: "#/components/schemas/ActionType" }]
+                nullable: true
+                description: null = aging with no action logged yet
+              count: { type: integer }
+
+    Threshold:
+      type: object
+      additionalProperties: false
+      required: [days]
+      properties:
+        days: { type: integer, minimum: 1, maximum: 3650 }
+
+    IngestVehicle:
+      type: object
+      additionalProperties: false
+      required: [vin, make, model, year, received_at]
+      properties:
+        vin:
+          type: string
+          description: 17 characters, A-Z and 0-9 excluding I, O, Q (case-insensitive)
+          pattern: "^[A-HJ-NPR-Za-hj-npr-z0-9]{17}$"
+        make: { type: string, minLength: 1, maxLength: 64 }
+        model: { type: string, minLength: 1, maxLength: 64 }
+        year: { type: integer, minimum: 1900 }
+        price: { type: number, nullable: true, minimum: 0, description: At most 2 decimals }
+        received_at: { type: string, format: date, description: Not in the future }
+        status:
+          type: string
+          enum: [IN_STOCK, SOLD, REMOVED]
+          default: IN_STOCK
+
+    IngestRequest:
+      type: object
+      additionalProperties: false
+      required: [vehicles]
+      properties:
+        vehicles:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { $ref: "#/components/schemas/IngestVehicle" }
+
+    IngestResponse:
+      type: object
+      additionalProperties: false
+      required: [inserted, updated]
+      properties:
+        inserted: { type: integer, minimum: 0 }
+        updated: { type: integer, minimum: 0 }
