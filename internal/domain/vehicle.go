@@ -61,7 +61,7 @@ type Cursor struct {
 }
 
 type cursorJSON struct {
-	D string    `json:"d"`
+	D  string    `json:"d"`
 	ID uuid.UUID `json:"id"`
 }
 
