@@ -195,6 +195,7 @@ The one thing a stored flag offers is a "became aging today" event. That is the 
   - Go and process collectors
   - The registry is private, so tests can build routers freely.
 - **Tracing:** `otelgin` spans for each request (health and metrics are filtered out), with `otelpgx` child spans for every query, transaction and pool acquire. Query parameters are not recorded. Export is OTLP/gRPC to `OTLP_ENDPOINT`, and nothing is exported when it is unset. W3C `traceparent` propagation is enabled.
+- **Dashboards (optional):** the `observability` compose profile adds Grafana, Prometheus, Loki and Alloy beside Jaeger. A provisioned **Inventory API** dashboard shows traffic, latency, routes, actions logged, ingested rows, the database pool, and searchable logs. Alloy ships only the `api`, `migrate` and `seed` containers. Postgres logs stay out because their error details can include row values such as action notes. Only `service` and `level` are Loki labels: fields like `request_id` have too many values to index, so they are searched in the log line. Both Prometheus and Loki keep 7 days.
 - **Suggested alerts:** p95 latency per route, 5xx rate, `db_pool_empty_acquire_total` rate (pool saturation), and 429 rate.
 - **Lifecycle:** `/healthz` is liveness and is always 200. `/readyz` pings the database and returns 503 on failure. On SIGTERM the server stops accepting connections and drains in-flight requests (15 s budget), then the pool closes and traces flush.
 
@@ -346,6 +347,8 @@ The MVP stock is about 500 vehicles. The measurements above show headroom to 250
 - **Production gaps (intentional for the MVP):**
   - Issue tokens from a real IdP (OIDC/JWKS, RS256) instead of `api token`.
   - Use TLS at the edge.
+  - Give Grafana real logins. Locally it allows anonymous editing and only listens on localhost.
+  - Replace the Docker socket that Alloy reads. It gives Alloy broad access to the host's Docker, even when mounted read-only.
   - Restrict `/metrics` to the internal network.
   - Store the secret in a secret manager.
   - Rotate keys using `kid`.
@@ -360,6 +363,7 @@ The MVP stock is about 500 vehicles. The measurements above show headroom to 250
 - **Only successful action requests are stored for idempotency.** Failed requests can be retried with the same key.
 - **UTC calendar day.** "Today" is the UTC date. A dealership far from UTC would see ages roll over at UTC midnight. A per-dealership time zone is a small change: `Clock.Today()` would take a location.
 - **Unchanged ingest rows count as neither inserted nor updated.** This is what makes "re-sending yields 0" hold, and it avoids pointless row versions. The cost is comparing the columns on conflict.
+- **Loki's write-ahead log threshold is raised to 98%.** The 90% default made Loki refuse every log with a misleading `Ingester is shutting down` once the disk passed 90% used. The stack is meant for local use, where that default is too cautious, but a nearly full disk can still stop log collection.
 - **The rate limiter is in-process.** It is simple and enough for one instance. For several replicas, see [scaling path](#9-scaling-path).
 
 ## 12. Future: multi-dealership
@@ -391,6 +395,7 @@ This is not implemented. The code keeps the change contained: every query goes t
 | A per-IP rate limit would throttle the k6 run, which comes from one IP | Made it configurable (`RATE_LIMIT_RPS`, where 0 disables it) and documented this in the k6 script |
 | A flaky test of mine compared RFC 3339 timestamps as strings (trimmed zeros do not sort lexically) | Parse the timestamps before comparing |
 | `json.Number("null")` for a missing price fails to marshal | Use `*json.Number` (nil gives JSON `null`) |
+| Query checks passed while Loki was rejecting all new logs. Comparing the newest line in Docker with the newest in Loki exposed it. The first fix (`instance_addr`) turned out to be unrelated, and an A/B test ruled it out | Raised the write-ahead log disk threshold, and removed the unrelated setting |
 
 **How outputs were verified.** Nothing was accepted on the AI's word alone:
 

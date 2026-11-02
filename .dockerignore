@@ -2,3 +2,4 @@
 *.md
 !README.md
 bin/
+observability/

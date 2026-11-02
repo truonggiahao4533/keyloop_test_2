@@ -1,0 +1,65 @@
+// Ships the API's container logs to Loki.
+
+// Only this compose project: other containers on the host stay out.
+discovery.docker "project" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=" + sys.env("COMPOSE_PROJECT")]
+  }
+}
+
+// Postgres is left out on purpose: its error details can include row values,
+// such as action notes, which must never reach the logs.
+discovery.relabel "services" {
+  targets = discovery.docker.project.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "api|migrate|seed"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "services" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.services.output
+  forward_to = [loki.process.api_logs.receiver]
+}
+
+loki.process "api_logs" {
+  // Prometheus scrapes every 15 s, which would otherwise bury real requests.
+  stage.drop {
+    expression          = ".*\"route\":\"/metrics\".*"
+    drop_counter_reason = "metrics_scrape"
+  }
+
+  // Only level becomes a label. Fields like request_id have too many values
+  // for a label, so they are searched in the log line instead.
+  stage.json {
+    expressions = { level = "level" }
+  }
+
+  stage.labels {
+    values = { level = "" }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+
+    // Keep retrying for about 10 minutes, at most 15 s apart, so logs reach
+    // Loki soon after it comes back instead of waiting on a long backoff.
+    max_backoff_period  = "15s"
+    max_backoff_retries = 40
+  }
+}

@@ -117,12 +117,38 @@ Action types: `PRICE_REDUCTION_PLANNED`, `PRICE_REDUCED`, `TRANSFER_PLANNED`, `W
 | `OTLP_ENDPOINT` | empty (no export) | OTLP/gRPC trace endpoint, e.g. `jaeger:4317` |
 | `DB_MAX_CONNS` | `20` | pgx pool size |
 
-To view traces locally:
+## Monitoring
+
+Logs, metrics and traces can be viewed in Grafana. The stack is optional, so a plain `docker compose up` does not start it.
 
 ```bash
 OTLP_ENDPOINT=jaeger:4317 docker compose --profile observability up -d
-open http://localhost:16686
 ```
+
+Open **http://localhost:3000** (no login needed). The **Inventory API** dashboard opens first.
+
+| Service | What it does | Address |
+|---|---|---|
+| Grafana | Dashboard and log search | http://localhost:3000 |
+| Prometheus | Scrapes `/metrics` every 15 s and keeps 7 days | http://localhost:9090 |
+| Loki | Stores logs for 7 days | Used through Grafana |
+| Alloy | Sends the `api`, `migrate` and `seed` container logs to Loki | Not published |
+| Jaeger | Stores traces, while `OTLP_ENDPOINT` is set as above | http://localhost:16686 |
+
+To follow one request, put its `X-Request-Id` in the dashboard's **Search logs** box. The box also matches anything else in the log line, such as a route, a status or a subject. For free-form queries, use Grafana's **Explore** page:
+
+```
+{service="api", level="ERROR"}
+{service="api"} | json | status >= 500
+{service="api"} | json | latency_ms > 100
+```
+
+Good to know:
+
+- **Stopping:** use `docker compose --profile observability down`. Without the profile flag, the monitoring containers keep running. Adding `-v` also deletes the database volume.
+- **Local use only:** Grafana allows anonymous editing, so Grafana and Prometheus only listen on localhost. Change `GRAFANA_PORT` or `PROMETHEUS_PORT` if those ports are taken.
+- **Left out on purpose:** Postgres logs are not collected, because their error details can include row values such as action notes. `/metrics` scrape lines are dropped too, to keep the logs readable.
+- **Disk space:** Loki stops accepting logs when the disk is 98% used. If logs stop arriving, check `docker compose logs loki` for `disk usage exceeded threshold`.
 
 ## Layout
 
@@ -137,4 +163,5 @@ db/migrations, db/queries goose migrations, sqlc queries (generated code in db/g
 api/openapi.yaml          API contract
 scripts/                  seed, smoke test, k6 load test
 docs/                     system design, decision log
+observability/            Prometheus, Loki, Alloy and Grafana config, and the dashboard
 ```
