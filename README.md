@@ -6,7 +6,7 @@ Go + PostgreSQL API for **one dealership's** vehicle inventory. It does three th
 2. **Aging stock:** a vehicle is *aging* when `age_days > threshold`. The threshold defaults to 90 and is configurable, so day 91 is aging and day 90 is not. Age is computed at query time from `received_at` and is never stored.
 3. **Actions:** managers log what they plan to do with a vehicle. Logging is idempotent, keeps a history, and sets the vehicle's current action.
 
-See [docs/system-design.md](docs/system-design.md) for the architecture and the reasoning behind it, and [api/openapi.yaml](api/openapi.yaml) for the API contract.
+See [api/openapi.yaml](api/openapi.yaml) for the API contract.
 
 ## Quick start
 
@@ -174,6 +174,5 @@ internal/platform/        config, logging, metrics, tracing, JWT auth
 db/migrations, db/queries goose migrations, sqlc queries (generated code in db/gen)
 api/openapi.yaml          API contract
 scripts/                  seed, smoke test, k6 load test
-docs/                     system design, decision log
 observability/            Prometheus, Loki, Alloy, Tempo and Grafana config, and the dashboard
 ```
