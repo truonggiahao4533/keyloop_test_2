@@ -31,6 +31,7 @@ services:
     entrypoint: ["/seed", "-if-empty"]
     environment:
       DATABASE_URL: postgres://inventory:inventory@db:5432/inventory?sslmode=disable
+      DEALERSHIP_TIMEZONE: ${DEALERSHIP_TIMEZONE:-UTC}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -41,6 +42,7 @@ services:
       PORT: "8080"
       DATABASE_URL: postgres://inventory:inventory@db:5432/inventory?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-please}
+      DEALERSHIP_TIMEZONE: ${DEALERSHIP_TIMEZONE:-UTC}
       OTLP_ENDPOINT: ${OTLP_ENDPOINT:-}
       # Per client IP; set RATE_LIMIT_RPS=0 for load tests from one host.
       RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-50}

@@ -23,6 +23,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/haotruong/inventory-dashboard/internal/platform"
 )
 
 type model struct {
@@ -92,6 +94,10 @@ func main() {
 	if url == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
+	loc, err := platform.DealershipLocation()
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
@@ -117,7 +123,7 @@ func main() {
 
 	start := time.Now()
 	rng := rand.New(rand.NewPCG(*seed, *seed)) //nolint:gosec // reproducible demo data, not security-sensitive
-	vs, as := generate(*n, rng, time.Now().UTC())
+	vs, as := generate(*n, rng, time.Now().In(loc))
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {

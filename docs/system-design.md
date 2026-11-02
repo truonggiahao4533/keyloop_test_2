@@ -47,7 +47,7 @@ The layering is hexagonal (ports and adapters):
 | `seed` (compose, one-shot) | `seed -if-empty` loads about 500 demo vehicles on the first start only, so logged actions survive restarts |
 | `api` | Serves HTTP on :8080 and starts after `seed` has completed |
 | `jaeger` (optional profile) | OTLP trace sink and UI (`--profile observability`) |
-| `Clock` port | Supplies "today". It is `SystemClock` (UTC date) in production and `FixedClock` in tests, so ages are deterministic |
+| `Clock` port | Supplies "today". It is `SystemClock` (the date in `DEALERSHIP_TIMEZONE`) in production and `FixedClock` in tests, so ages are deterministic |
 
 ## 3. Data flow
 
@@ -178,7 +178,7 @@ Age is `today − received_at` and **is never stored**. A vehicle is aging when 
 | Query cost | `received_at <= today − (t+1)` is a range condition on `idx_vehicles_age`: 0.06 ms for the first aging page at 250k rows | Index on the flag; similar |
 | Testability | An injected `Clock` makes boundaries (day 90 vs 91) deterministic | Time-dependent jobs are harder to test |
 
-The rules live in one place, `domain.AgeDays`, `domain.IsAging` and `domain.AgingCutoff`. A unit test checks that the SQL cutoff and `IsAging` agree for every age from 0 to 199. Dates are UTC calendar dates.
+The rules live in one place, `domain.AgeDays`, `domain.IsAging` and `domain.AgingCutoff`. A unit test checks that the SQL cutoff and `IsAging` agree for every age from 0 to 199. Dates are calendar dates in the dealership's time zone (`DEALERSHIP_TIMEZONE`, default UTC).
 
 The one thing a stored flag offers is a "became aging today" event. That is the optional daily job in the [scaling path](#9-scaling-path). It would emit events, not maintain state.
 
@@ -361,7 +361,7 @@ The MVP stock is about 500 vehicles. The measurements above show headroom to 250
 - **Rare make/model filters** walk the age index and filter. That is fast for common makes (3 ms worst case measured), but would degrade for very rare combinations at large scale. The fix, if needed, is an index on `(make, model, received_at, id) WHERE status = 'IN_STOCK'`.
 - **Idempotency keys are global**, not scoped per user, and the hash covers the vehicle id plus the normalized body. Reusing a key across users or vehicles returns 409. That is a safe failure, and clients should generate random keys.
 - **Only successful action requests are stored for idempotency.** Failed requests can be retried with the same key.
-- **UTC calendar day.** "Today" is the UTC date. A dealership far from UTC would see ages roll over at UTC midnight. A per-dealership time zone is a small change: `Clock.Today()` would take a location.
+- **One configured time zone.** "Today" is the date in `DEALERSHIP_TIMEZONE`, so ages roll over at the dealership's midnight. `received_at` has no zone and is stored as sent, so the feed must send dates in that same zone. A feed on another zone can be off by a day, or get a `400` for a date that looks like the future. Several dealerships would need one zone each.
 - **Unchanged ingest rows count as neither inserted nor updated.** This is what makes "re-sending yields 0" hold, and it avoids pointless row versions. The cost is comparing the columns on conflict.
 - **Loki's write-ahead log threshold is raised to 98%.** The 90% default made Loki refuse every log with a misleading `Ingester is shutting down` once the disk passed 90% used. The stack is meant for local use, where that default is too cautious, but a nearly full disk can still stop log collection.
 - **The rate limiter is in-process.** It is simple and enough for one instance. For several replicas, see [scaling path](#9-scaling-path).

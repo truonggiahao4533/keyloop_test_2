@@ -118,6 +118,7 @@ Action types: `PRICE_REDUCTION_PLANNED`, `PRICE_REDUCED`, `TRANSFER_PLANNED`, `W
 | `PORT` | `8080` | HTTP port |
 | `DATABASE_URL` | required | Postgres DSN |
 | `JWT_SECRET` | required (16+ chars) | HS256 signing secret |
+| `DEALERSHIP_TIMEZONE` | `UTC` | IANA time zone that decides "today", e.g. `Asia/Ho_Chi_Minh`. Send `received_at` as a date in this zone |
 | `OTLP_ENDPOINT` | empty (no export) | OTLP/gRPC trace endpoint, e.g. `jaeger:4317` |
 | `DB_MAX_CONNS` | `20` | pgx pool size |
 

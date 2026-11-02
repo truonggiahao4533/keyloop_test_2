@@ -360,7 +360,7 @@ components:
         year: { type: integer }
         price: { type: number, nullable: true, minimum: 0, example: 24999.00 }
         received_at: { type: string, format: date }
-        age_days: { type: integer, minimum: 0, description: "today - received_at, in days" }
+        age_days: { type: integer, minimum: 0, description: "today in the dealership's time zone - received_at, in days" }
         is_aging: { type: boolean, description: "age_days > threshold" }
         current_action:
           allOf: [{ $ref: "#/components/schemas/ActionType" }]
@@ -460,7 +460,7 @@ components:
         model: { type: string, minLength: 1, maxLength: 64 }
         year: { type: integer, minimum: 1900 }
         price: { type: number, nullable: true, minimum: 0, description: At most 2 decimals }
-        received_at: { type: string, format: date, description: Not in the future }
+        received_at: { type: string, format: date, description: "Calendar date in the dealership's time zone. Not in the future" }
         status:
           type: string
           enum: [IN_STOCK, SOLD, REMOVED]

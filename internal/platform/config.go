@@ -16,6 +16,8 @@ type Config struct {
 	JWTSecret    string
 	OTLPEndpoint string // empty disables trace export
 
+	Location *time.Location // the dealership's zone, which decides "today"
+
 	DBMaxConns int32
 	DBTimeout  time.Duration
 
@@ -42,6 +44,10 @@ func LoadConfig() (Config, error) {
 	if len(c.JWTSecret) < 16 {
 		return c, fmt.Errorf("JWT_SECRET is required (min 16 chars)")
 	}
+	var err error
+	if c.Location, err = DealershipLocation(); err != nil {
+		return c, err
+	}
 	if v := os.Getenv("DB_MAX_CONNS"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 32)
 		if err != nil || n < 1 {
@@ -64,6 +70,17 @@ func LoadConfig() (Config, error) {
 		c.RateLimitBurst = n
 	}
 	return c, nil
+}
+
+// DealershipLocation reads DEALERSHIP_TIMEZONE, an IANA zone name that defaults
+// to UTC. "Local" is rejected because it would tie "today" to the host's zone.
+func DealershipLocation() (*time.Location, error) {
+	name := getenv("DEALERSHIP_TIMEZONE", "UTC")
+	loc, err := time.LoadLocation(name)
+	if err != nil || name == "Local" {
+		return nil, fmt.Errorf("DEALERSHIP_TIMEZONE must be an IANA time zone name, such as Asia/Ho_Chi_Minh")
+	}
+	return loc, nil
 }
 
 func getenv(key, def string) string {

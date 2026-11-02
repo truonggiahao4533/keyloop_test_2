@@ -129,7 +129,7 @@ func serve() error {
 	metrics := platform.NewMetrics()
 	metrics.RegisterPool(pool)
 	repos := postgres.NewRepos(pool, cfg.DBTimeout)
-	svc := app.New(repos.Vehicles, repos.Actions, repos.Settings, domain.SystemClock{})
+	svc := app.New(repos.Vehicles, repos.Actions, repos.Settings, domain.SystemClock{Location: cfg.Location})
 
 	srv := &http.Server{
 		Addr: ":" + cfg.Port,

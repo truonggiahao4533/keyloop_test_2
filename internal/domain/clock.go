@@ -5,11 +5,11 @@ import "time"
 // Clock supplies "today". It is injected so tests can control the date.
 type Clock interface{ Today() time.Time }
 
-// SystemClock returns the current UTC date.
-type SystemClock struct{}
+// SystemClock returns the current date in the dealership's time zone.
+type SystemClock struct{ Location *time.Location }
 
-// Today returns the current date at UTC midnight.
-func (SystemClock) Today() time.Time { return DateOf(time.Now()) }
+// Today returns the current date in Location, at UTC midnight.
+func (c SystemClock) Today() time.Time { return DateOf(time.Now().In(c.Location)) }
 
 // FixedClock always returns the same date. Useful in tests and scripts.
 type FixedClock time.Time
