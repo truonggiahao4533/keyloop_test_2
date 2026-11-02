@@ -18,9 +18,9 @@ datasources:
     url: http://loki:3100
     editable: false
 
-  - name: Jaeger
-    uid: jaeger
-    type: jaeger
+  - name: Tempo
+    uid: tempo
+    type: tempo
     access: proxy
-    url: http://jaeger:16686
+    url: http://tempo:3200
     editable: false

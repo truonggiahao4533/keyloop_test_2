@@ -56,14 +56,16 @@ services:
         condition: service_completed_successfully
 
   # Optional monitoring stack:
-  #   OTLP_ENDPOINT=jaeger:4317 docker compose --profile observability up -d
-  # Grafana: http://localhost:3000   Jaeger: http://localhost:16686
+  #   OTLP_ENDPOINT=tempo:4317 docker compose --profile observability up -d
+  # Grafana: http://localhost:3000
   # Stop it with: docker compose --profile observability down
-  jaeger:
-    image: jaegertracing/jaeger:2.11.0
+  tempo:
+    image: grafana/tempo:3.1.1
     profiles: ["observability"]
-    ports:
-      - "16686:16686"
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./observability/tempo/config.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/var/tempo
 
   prometheus:
     image: prom/prometheus:v3.15.1
@@ -120,9 +122,11 @@ services:
     depends_on:
       - prometheus
       - loki
+      - tempo
 
 volumes:
   pgdata:
   prometheus-data:
   loki-data:
   alloy-data:
+  tempo-data:

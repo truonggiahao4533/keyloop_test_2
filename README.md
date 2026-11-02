@@ -119,7 +119,7 @@ Action types: `PRICE_REDUCTION_PLANNED`, `PRICE_REDUCED`, `TRANSFER_PLANNED`, `W
 | `DATABASE_URL` | required | Postgres DSN |
 | `JWT_SECRET` | required (16+ chars) | HS256 signing secret |
 | `DEALERSHIP_TIMEZONE` | `UTC` | IANA time zone that decides "today", e.g. `Asia/Ho_Chi_Minh`. Send `received_at` as a date in this zone |
-| `OTLP_ENDPOINT` | empty (no export) | OTLP/gRPC trace endpoint, e.g. `jaeger:4317` |
+| `OTLP_ENDPOINT` | empty (no export) | OTLP/gRPC trace endpoint, e.g. `tempo:4317` |
 | `DB_MAX_CONNS` | `20` | pgx pool size |
 
 ## Monitoring
@@ -127,7 +127,7 @@ Action types: `PRICE_REDUCTION_PLANNED`, `PRICE_REDUCED`, `TRANSFER_PLANNED`, `W
 Logs, metrics and traces can be viewed in Grafana. The stack is optional, so a plain `docker compose up` does not start it.
 
 ```bash
-OTLP_ENDPOINT=jaeger:4317 docker compose --profile observability up -d
+OTLP_ENDPOINT=tempo:4317 docker compose --profile observability up -d
 ```
 
 Open **http://localhost:3000** (no login needed). The **Inventory API** dashboard opens first.
@@ -138,7 +138,7 @@ Open **http://localhost:3000** (no login needed). The **Inventory API** dashboar
 | Prometheus | Scrapes `/metrics` every 15 s and keeps 7 days | http://localhost:9090 |
 | Loki | Stores logs for 7 days | Used through Grafana |
 | Alloy | Sends the `api`, `migrate` and `seed` container logs to Loki | Not published |
-| Jaeger | Stores traces, while `OTLP_ENDPOINT` is set as above | http://localhost:16686 |
+| Tempo | Stores traces for 7 days, while `OTLP_ENDPOINT` is set as above | Used through Grafana |
 
 To follow one request, put its `X-Request-Id` in the dashboard's **Search logs** box. The box also matches anything else in the log line, such as a route, a status or a subject. For free-form queries, use Grafana's **Explore** page:
 
@@ -148,8 +148,15 @@ To follow one request, put its `X-Request-Id` in the dashboard's **Search logs**
 {service="api"} | json | latency_ms > 100
 ```
 
+For traces, open **Drilldown → Traces**, or use **Explore** with the **Tempo** data source and a TraceQL query:
+
+```
+{ resource.service.name = "inventory-api" && duration > 50ms }
+```
+
 Good to know:
 
+- **Traces take a moment:** new traces can take about 30 seconds to appear. Grafana installs the Traces Drilldown plugin on its first start, which needs internet access and can take about a minute.
 - **Stopping:** use `docker compose --profile observability down`. Without the profile flag, the monitoring containers keep running. Adding `-v` also deletes the database volume.
 - **Local use only:** Grafana allows anonymous editing, so Grafana and Prometheus only listen on localhost. Change `GRAFANA_PORT` or `PROMETHEUS_PORT` if those ports are taken.
 - **Left out on purpose:** Postgres logs are not collected, because their error details can include row values such as action notes. `/metrics` scrape lines are dropped too, to keep the logs readable.
@@ -168,5 +175,5 @@ db/migrations, db/queries goose migrations, sqlc queries (generated code in db/g
 api/openapi.yaml          API contract
 scripts/                  seed, smoke test, k6 load test
 docs/                     system design, decision log
-observability/            Prometheus, Loki, Alloy and Grafana config, and the dashboard
+observability/            Prometheus, Loki, Alloy, Tempo and Grafana config, and the dashboard
 ```

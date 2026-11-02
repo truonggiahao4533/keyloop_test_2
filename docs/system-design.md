@@ -9,7 +9,7 @@ flowchart LR
   subgraph Clients
     UI[Dashboard UI<br/>viewer / manager]
     DMS[DMS / inventory feed<br/>ingest role]
-    OPS[Prometheus / Jaeger]
+    OPS[Prometheus / Tempo]
   end
 
   subgraph API["api (Go, Gin)"]
@@ -46,7 +46,7 @@ The layering is hexagonal (ports and adapters):
 | `migrate` (compose, one-shot) | `api migrate` applies the goose migrations embedded in the binary |
 | `seed` (compose, one-shot) | `seed -if-empty` loads about 500 demo vehicles on the first start only, so logged actions survive restarts |
 | `api` | Serves HTTP on :8080 and starts after `seed` has completed |
-| `jaeger` (optional profile) | OTLP trace sink and UI (`--profile observability`) |
+| `tempo` (optional profile) | Stores traces received over OTLP, viewed through Grafana (`--profile observability`) |
 | `Clock` port | Supplies "today". It is `SystemClock` (the date in `DEALERSHIP_TIMEZONE`) in production and `FixedClock` in tests, so ages are deterministic |
 
 ## 3. Data flow
@@ -115,6 +115,7 @@ sequenceDiagram
 | **goose (embedded)** | Plain-SQL up/down migrations shipped inside the binary, so one image both migrates and serves |
 | **JWT HS256** | Stateless and enough for an MVP with a stubbed identity provider. Moving to RS256/JWKS later changes only `platform/auth.go` |
 | **Prometheus + OpenTelemetry** | De-facto standards: pull metrics, OTLP traces that work with any backend, and W3C trace propagation |
+| **Tempo** | Keeps traces in the same Grafana stack as logs and metrics, with Traces Drilldown and TraceQL queries. It needs a config file and local storage, but the API only speaks standard OTLP, so the backend can change with no code changes |
 | **testcontainers-go** | Integration tests run against the same `postgres:18` image as compose. The database is never mocked, because the interesting behavior (indexes, locks, `ON CONFLICT`, enums) lives there |
 | **kin-openapi** | Validates real requests and responses against `api/openapi.yaml`, so the spec cannot drift from the code |
 
@@ -195,7 +196,7 @@ The one thing a stored flag offers is a "became aging today" event. That is the 
   - Go and process collectors
   - The registry is private, so tests can build routers freely.
 - **Tracing:** `otelgin` spans for each request (health and metrics are filtered out), with `otelpgx` child spans for every query, transaction and pool acquire. Query parameters are not recorded. Export is OTLP/gRPC to `OTLP_ENDPOINT`, and nothing is exported when it is unset. W3C `traceparent` propagation is enabled.
-- **Dashboards (optional):** the `observability` compose profile adds Grafana, Prometheus, Loki and Alloy beside Jaeger. A provisioned **Inventory API** dashboard shows traffic, latency, routes, actions logged, ingested rows, the database pool, and searchable logs. Alloy ships only the `api`, `migrate` and `seed` containers. Postgres logs stay out because their error details can include row values such as action notes. Only `service` and `level` are Loki labels: fields like `request_id` have too many values to index, so they are searched in the log line. Both Prometheus and Loki keep 7 days.
+- **Dashboards (optional):** the `observability` compose profile adds Grafana, Prometheus, Loki, Alloy and Tempo. A provisioned **Inventory API** dashboard shows traffic, latency, routes, actions logged, ingested rows, the database pool, and searchable logs. Alloy ships only the `api`, `migrate` and `seed` containers. Postgres logs stay out because their error details can include row values such as action notes. Only `service` and `level` are Loki labels: fields like `request_id` have too many values to index, so they are searched in the log line. Traces can be browsed in Grafana's Traces Drilldown, or queried with TraceQL in Explore. Prometheus, Loki and Tempo all keep 7 days.
 - **Suggested alerts:** p95 latency per route, 5xx rate, `db_pool_empty_acquire_total` rate (pool saturation), and 429 rate.
 - **Lifecycle:** `/healthz` is liveness and is always 200. `/readyz` pings the database and returns 503 on failure. On SIGTERM the server stops accepting connections and drains in-flight requests (15 s budget), then the pool closes and traces flush.
 
@@ -408,4 +409,4 @@ This is not implemented. The code keeps the change contained: every query goes t
 - **Load test.** k6 with 50 VUs for 1 minute measured p95 = 25 ms against the 100 ms target.
 - **Lint.** `go vet` and `golangci-lint` (with gosec, errorlint, revive and staticcheck) are clean.
 - **End-to-end.** `make smoke` runs 14 checks against `docker compose up`. Separately, an action was logged, the stack was taken down and brought back up, and the action and the vehicle's current action were still there.
-- **Manual checks.** The assistant inspected logs and Jaeger traces to confirm that no tokens, notes or query parameters leak. The owner's own review is recorded in the decision log.
+- **Manual checks.** The assistant inspected logs and traces to confirm that no tokens, notes or query parameters leak. The owner's own review is recorded in the decision log.
