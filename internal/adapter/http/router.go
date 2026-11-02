@@ -90,6 +90,8 @@ func newEngine(d Deps) (*gin.Engine, *gin.RouterGroup) {
 	})
 
 	r.GET("/metrics", gin.WrapH(d.Metrics.Handler()))
+	r.GET("/openapi.yaml", serveSpec)
+	r.GET("/docs", serveDocs)
 
 	lim := d.Limits.withDefaults()
 	v1 := r.Group("/v1")

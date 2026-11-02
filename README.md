@@ -39,6 +39,10 @@ export TOKEN=$(docker compose exec -T api /api token -role manager -sub alice)
 
 A missing, invalid or expired token returns `401`. A role that is not allowed returns `403`.
 
+## Swagger UI
+
+Open **http://localhost:8080/docs**. The raw spec is served at `/openapi.yaml`. To try the endpoints, click **Authorize** and paste a token from the next section. Paste the token alone, without `Bearer `.
+
 ## API by example
 
 Every error has the same shape, and every response carries an `X-Request-Id` header:
